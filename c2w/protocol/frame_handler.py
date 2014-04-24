@@ -5,15 +5,15 @@ class FrameHandler:
 
     def __init__(self):
         self.headFound = False
-        self.currentHead = ""  # current header in binary mode
+        self.currentHead = "" # current header in binary mode
         self.currentSize = 0
         self.buf = ""
         self.header = Packet(0, 0, 0, 3, 0, 0, 0, 0, None)
 
     def extractPackets(self, data):
         """
-        return: a list of packet objects
-        """
+return: a list of packet objects
+"""
         packList = []
         while data != "":
             # header detected
@@ -42,7 +42,7 @@ class FrameHandler:
                     self.currentSize += len(data)
                     data = ""
                 # Multiple packets are packed into one TCP packet, always happen
-                else:  # cut the data
+                else: # cut the data
                     t_data = data[0:self.header.length - self.currentSize]
                     self.buf += t_data
                     self.currentSize += len(t_data)

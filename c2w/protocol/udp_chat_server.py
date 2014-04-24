@@ -57,6 +57,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                             # 0 is reserved for login use
         self.movieList = []
         self.userAddrs = {}  # userId: (host, addr)
+        self.ackFrgState="waitForAckFrg"
 
 
     def initMovieList(self):
@@ -75,7 +76,53 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         self.transport = LossyTransport(self.transport, self.lossPr)
         DatagramProtocol.transport = self.transport
         self.initMovieList()
+        
+    def sendPacketFrg(self, packet, (host, port), callCount=0):
+        if packet.length > 65507:
+            nbreFrg = floor(pack.length/65507)
+            currentFrg = 1
+            currentSeqNum = packet.seqNum
+            ack = packet.ack
+            msgType = packet.msgType
+            roomType = packet.roomType
+            userId = packet.userId
+            destId = packet.destId
+            data = packet.data[65507*(currentFrg-1):65507*currentFrg]
+            
+            while currentFrg < nbreFrg and self.ackFrgState == "ackFrgReceived":
+                currentPacket = Packet(1, ack, msgType, roomType,seqNum, userId, destId, 65507, data)
+                self.sendAndCall(currentPacket, (host, port), callCount)
+                self.ackFrgState = "waitForAckFrg"
+                currentSeqNum += 1
+                currentFrg += 1
+                
+            sizeLeft=packet.length-(nbreFrg-1)*65507
+            if sizeLeft > 0:
+                ack = packet.ack
+                msgType = packet.msgType
+                roomType = packet.roomType
+                userId = packet.userId
+                destId = packet.destId
+                data = packet.data[65507*(currentFrg-1)+1:]
+                lastPacket = Packet(0, ack, msgType,
+                              roomType, currentSeqNum,
+                              userId, destId, sizeLeft, data
+                              )
+                self.sendAndCall(lastPacket, (host, port), callCount)
+        self.sendAndCall(packet, (host, port), callCount)                        
+    def sendAndCall(self, packet, (host, port), callCount=0):
+        print "###sending packet### : ", packet
+        buf = util.packMsg(packet)
+        self.transport.write(buf.raw, (host, port))
 
+        callCount += 1
+        if callCount < attempt_num:
+            reactor.callLater(timeout, self.sendPacket,
+                              packet, (host, port), callCount)
+        else:
+            print "too man tries, packet:", packet, " aborted"
+            return
+    
     def sendPacket(self, packet, (host, port), callCount=0):
         # send an ack packet to registered or non registered user
         # ack packet is sent only once
@@ -89,17 +136,8 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         # when an un-ack packet is received, we stop the timeout
         if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
             return
-        print "###sending packet### : ", packet
-        buf = util.packMsg(packet)
-        self.transport.write(buf.raw, (host, port))
+        self.sendPacketFrg(packet, (host, port), callCount)
 
-        callCount += 1
-        if callCount < attempt_num:
-            reactor.callLater(timeout, self.sendPacket,
-                              packet, (host, port), callCount)
-        else:
-            print "too man tries, packet:", packet, " aborted"
-            return
 
     def addUser(self, userName, (host, port)):
         """ add a new user into userList
@@ -110,7 +148,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             print "### WARNING: username exist!"
             return -1
 
-        # Add new user
+        # Add new userAckFrg
         userId = self.serverProxy.addUser(userName, ROOM_IDS.MAIN_ROOM,
                                  userAddress=(host, port))
         self.users[userId] = User(userName, userId, status=1)
@@ -217,6 +255,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                             seqNum=self.seqNums[userId],
                             userId=userId, destId=0, length=length,
                             data=self.movieList)
+        
         self.sendPacket(movieListPack, (host, port))
         pass
 
@@ -304,6 +343,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         # the previous packet is received
         if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:
             self.seqNums[pack.userId] += 1
+            self.ackFrgState=="ackFrgReceived"
             if pack.msgType == type_code["movieList"]:
                 self.informRefreshUserList()
             if pack.msgType == type_code["userList"]:

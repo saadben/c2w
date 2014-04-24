@@ -4,6 +4,7 @@ from c2w.main.lossy_transport import LossyTransport
 import logging
 from packet import Packet
 import util
+from frg_handler import FrgHandler
 from twisted.internet import reactor
 from config import attempt_num, timeout
 from tables import type_code, state_code
@@ -71,6 +72,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.state = state_code["disconnected"]
         self.movieRoomId = -1  # not in movie room
         self.currentMovieRoom = None
+        self.frgHandler = FrgHandler()
 
     def startProtocol(self):
         """
@@ -257,7 +259,8 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         Called **by Twisted** when the client has received a UDP
         packet.
         """
-        pack = util.unpackMsg(datagram)
+        
+        pack=self.frgHandler.formPacket(datagram)
         print "####packet received:", pack
 
         # the previous packet is received
@@ -297,10 +300,12 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             pack.turnIntoAck()
             self.sendPacket(pack)
             return
-
+            
+        # receiving a movie list 
         if pack.msgType == type_code["movieList"]:
             self.movieListReceived(pack)
             self.state = state_code["loginWaitForUserList"]
+       
         elif pack.msgType == type_code["userList"]:
             self.userListReceived(pack)
             if self.state == state_code["loginWaitForUserList"]:

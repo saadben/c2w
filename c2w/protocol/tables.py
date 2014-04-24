@@ -40,7 +40,11 @@ state_code = {
         "waitForMovieRoomAck": 6,
         "waitForMovieRoomUserList": 7,
         "waitForMainRoomAck": 8,
-        "waitForMainRoomUserList": 9
+        "waitForMainRoomUserList": 9,
+        "waitForAckFrg":10,
+        "ackFrgReceived":11,
+        "waitForNextFrg":12,
+        "packComplete":13
         }
 
 state_decode = {
